@@ -1,0 +1,64 @@
+---
+/**
+ * A photograph, resized at build time.
+ *
+ * Sources are the retouched originals supplied by the client, reduced to a
+ * 2400px long edge before they entered the repo. Astro emits AVIF and WebP
+ * variants from those at build, so nothing is transformed at request time and
+ * the site can be served from a plain file host.
+ *
+ *  - `width`/`height` come from the file, so space is reserved before the
+ *    image arrives and the page never reflows as it loads.
+ *  - `sizes` describes the SLOT, not the file. Get it wrong and the browser
+ *    either fetches far too much or renders a soft image — both were real
+ *    bugs on the previous build, so each value here was measured.
+ *  - `priority` marks the LCP candidate. At most one per page.
+ */
+import { Picture } from "astro:assets";
+import { resolvePhoto } from "../lib/images/local.ts";
+
+interface Props {
+  /** Filename stem under src/assets/photography, e.g. "hero-denim-car". */
+  src: string;
+  alt: string;
+  sizes: string;
+  priority?: boolean;
+  class?: string;
+  /** Applied to the <picture>; the class prop lands on the <img>. */
+  ratio?: string;
+}
+
+const { src, alt, sizes, priority = false, class: className } = Astro.props;
+
+const asset = resolvePhoto(src);
+if (!asset) {
+  throw new Error(
+    `Photo: no file for "${src}". Expected src/assets/photography/${src}.jpg — ` +
+      `add the file or correct the name in src/data/site.ts.`,
+  );
+}
+
+// Vercel's step sizes, which are also sensible breakpoints anywhere else.
+const WIDTHS = [640, 750, 828, 1080, 1200, 1600, 1920];
+
+/*
+  Quality 78. The default is 100, which preserves every artefact of the source
+  JPEG and returns a file the same size as the original — the resize buys
+  nothing. On photographs of cloth the difference at 78 is not visible.
+*/
+const QUALITY = 78;
+---
+
+<Picture
+  src={asset}
+  widths={WIDTHS}
+  sizes={sizes}
+  quality={QUALITY}
+  formats={["avif", "webp"]}
+  fallbackFormat="jpg"
+  alt={alt}
+  class={className}
+  loading={priority ? "eager" : "lazy"}
+  fetchpriority={priority ? "high" : "auto"}
+  decoding={priority ? "sync" : "async"}
+/>

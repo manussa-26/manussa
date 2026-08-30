@@ -1,0 +1,178 @@
+---
+import "../styles/base.css";
+import { BRAND, TEXWORLD } from "../data/site.ts";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Path under src/assets/photography used for the social preview. */
+  ogImage?: string;
+  noindex?: boolean;
+}
+
+const { title, description, ogImage, noindex = false } = Astro.props;
+
+const site = Astro.site ?? new URL("https://manussa.example");
+const canonical = new URL(Astro.url.pathname, site).href;
+
+/*
+  The social preview needs an absolute URL to a real file, so it is generated
+  here rather than pointing at a source path the host will not serve.
+*/
+import { getImage } from "astro:assets";
+import { resolvePhoto } from "../lib/images/local.ts";
+
+const ogAsset = ogImage ? resolvePhoto(ogImage) : undefined;
+const og = ogAsset
+  ? await getImage({ src: ogAsset, width: 1200, height: 630, format: "jpg", quality: 82, fit: "cover" })
+  : undefined;
+const ogUrl = og ? new URL(og.src, site).href : undefined;
+
+/*
+  Content policy as a meta tag.
+
+  A header is the right place for this, but GitHub Pages cannot set one. Meta
+  carries everything except frame-ancestors, which has no meta equivalent — a
+  header-capable host should add `X-Frame-Options: DENY` and the rest; see
+  docs/deploy.md.
+
+  script-src is 'none': the site ships no JavaScript, so nothing legitimate
+  needs to run, and anything injected has no way to execute.
+*/
+const CSP = [
+  "default-src 'self'",
+  "script-src 'none'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'none'",
+  "form-action 'none'",
+  "base-uri 'self'",
+  "object-src 'none'",
+].join("; ");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content={CSP} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#141210" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={BRAND.name} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {ogUrl && <meta property="og:image" content={ogUrl} />}
+    {ogUrl && <meta property="og:image:width" content="1200" />}
+    {ogUrl && <meta property="og:image:height" content="630" />}
+    <meta name="twitter:card" content={ogUrl ? "summary_large_image" : "summary"} />
+
+    <!--
+      The two display faces, preloaded. They are the first paint the page makes
+      and both are on the critical path, so waiting for the CSS to discover
+      them costs a visible flash of fallback type.
+    -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/fonts/CormorantGaramond-normal-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+          href="/fonts/Jost-normal-latin.woff2" />
+
+    <slot name="head" />
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <!--
+      Announcement bar. The dates are the reason this site exists right now, so
+      they sit above everything, on ink, before the visitor scrolls anywhere.
+    -->
+    <div class="announce">
+      <div class="shell announce-inner">
+        <p class="announce-now">
+          <span class="announce-label">Now showing</span>
+          <span class="announce-sep" aria-hidden="true">·</span>
+          <span class="announce-event">
+            {TEXWORLD.event}<span class="announce-context"> {TEXWORLD.context}</span>
+          </span>
+          <span class="announce-sep" aria-hidden="true">·</span>
+          <span class="announce-where">{TEXWORLD.hall} · {TEXWORLD.booth}</span>
+          <span class="announce-sep" aria-hidden="true">·</span>
+          <time datetime={TEXWORLD.start}>{TEXWORLD.dates}</time>
+        </p>
+        <a class="announce-mail" href={`mailto:${BRAND.email}`}>{BRAND.email}</a>
+      </div>
+    </div>
+
+    <slot name="header" />
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <slot name="footer" />
+  </body>
+</html>
+
+<style>
+  .announce {
+    background: var(--ink);
+    color: var(--cream);
+    font-size: var(--step--2);
+    letter-spacing: 0.1em;
+  }
+  .announce-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    min-height: 40px;
+    padding-block: var(--sp-2);
+  }
+  .announce-now {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 0.5em;
+    text-transform: uppercase;
+  }
+  .announce-label { color: var(--gold); }
+  .announce-sep { color: var(--sep-on-ink); }
+  .announce-mail {
+    text-transform: none;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    color: var(--cream);
+    /* 24px minimum target, without changing the bar's height. */
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+  }
+
+  @media (max-width: 800px) {
+    /*
+      The bar was running to three lines before a visitor saw anything, with a
+      separator orphaned at the end of the first. On a phone it keeps only what
+      a buyer needs to find the stand — the email is in the footer and in the
+      Visit section, and "Apparel Sourcing" is context they already have if
+      they are at the show.
+    */
+    .announce-mail,
+    .announce-context,
+    .announce-label,
+    .announce-label + .announce-sep { display: none; }
+    .announce-inner { justify-content: center; text-align: center; }
+    .announce-now { justify-content: center; }
+    .announce-event { color: var(--gold); }
+  }
+</style>
